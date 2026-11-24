@@ -1,0 +1,13 @@
+# Build output
+build/
+out/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.dll
+
+# CMake
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
