@@ -527,3 +527,6 @@ Split `bus.hpp` into `cartridge.{hpp,cpp}` (Rom + header) and `bus.{hpp,cpp}` (m
 then add a `Mbc1` inside `Rom` so `0x4000-0x7FFF` follows the selected
 bank. That is the last thing needed before a CPU can fetch instructions from a 64 KB Blargg
 ROM correctly.
+
+actual dev logs created for any problems in the way to complete 
+everything is on my github and instagram

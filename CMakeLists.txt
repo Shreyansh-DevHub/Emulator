@@ -12,3 +12,10 @@ target_link_libraries(gbemu PRIVATE
     $<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>
     $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
 )
+
+# Tests are a second, independent program: gbemu is not linked against them and their
+# failure cannot break the emulator build. Assert-based, so keep them out of Release.
+enable_testing()
+
+add_executable(cpu_tests tests/cpu_tests.cpp)
+add_test(NAME cpu_tests COMMAND cpu_tests)

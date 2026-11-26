@@ -17,6 +17,8 @@ void print_rom_header(const Rom& rom, std::ostream& out = std::cout) {
     out << "Title       : " << h.title << "\n";
 
     // 0x0100-0x0103 hold the first instructions (NOP; JP nn), not a number.
+    //same thing in the docs
+    
     out << "Entry bytes :";
     for (size_t i = 0; i < 4; ++i) {
         out << ' ' << std::hex << std::uppercase << std::setw(2) << std::setfill('0')

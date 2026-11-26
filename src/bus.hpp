@@ -77,7 +77,7 @@ public:
     // Human-readable mnemonic for the byte at 0x0147 (Pan Docs).
     static const char* cartridge_type_name(uint8_t code) {
         switch (code) {
-            //this is the actual address taken from the pandocs .
+            //this is the actual address taken from the pandocs
             case 0x00: return "ROM ONLY";
             case 0x01: return "MBC1";
             case 0x02: return "MBC1+RAM";
