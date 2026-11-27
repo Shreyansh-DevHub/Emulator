@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Game Boy DMG Emulator — System Overview (Days 1–3)</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm 14mm 14mm; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 9.6pt;
+    line-height: 1.5;
+    color: #1d2329;
+    margin: 0;
+  }
+
+  /* ---------- title block ---------- */
+  .cover { border-bottom: 2.5pt solid #2f4f3f; padding-bottom: 8pt; margin-bottom: 12pt; }
+  .eyebrow { font-size: 8pt; letter-spacing: 1.4pt; text-transform: uppercase; color: #6b7a72; font-weight: 600; }
+  h1 { font-size: 21pt; line-height: 1.15; margin: 5pt 0 4pt; color: #16241c; letter-spacing: -0.3pt; }
+  .subtitle { font-size: 10.5pt; color: #4a5a52; margin: 0; }
+  .meta { font-size: 8.3pt; color: #75837c; margin-top: 7pt; }
+
+  /* ---------- headings ---------- */
+  h2 {
+    font-size: 12.5pt; margin: 16pt 0 6pt; padding-bottom: 2.5pt;
+    border-bottom: 0.8pt solid #c9d4cd; color: #1b3226;
+    break-after: avoid;
+  }
+  h2 .num { color: #4d7c62; font-weight: 700; margin-right: 5pt; }
+  h3 { font-size: 10pt; margin: 11pt 0 3pt; color: #24402f; break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  ul, ol { margin: 0 0 7pt; padding-left: 15pt; }
+  li { margin-bottom: 2.5pt; }
+
+  code, .mono { font-family: Consolas, "Courier New", monospace; font-size: 8.7pt; }
+  code { background: #f0f4f1; border: 0.5pt solid #dde5df; border-radius: 2pt; padding: 0 2pt; color: #1f4433; }
+
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 9pt; font-size: 8.6pt; break-inside: avoid; }
+  th { background: #eef3ef; text-align: left; font-weight: 600; color: #22402f; }
+  th, td { border: 0.5pt solid #cfd9d2; padding: 3pt 5pt; vertical-align: top; }
+  td.mono, th.mono { font-family: Consolas, "Courier New", monospace; }
+  tr:nth-child(even) td { background: #fafcfb; }
+
+  pre {
+    font-family: Consolas, "Courier New", monospace; font-size: 8.3pt; line-height: 1.42;
+    background: #16241c; color: #dfece3; padding: 7pt 9pt; border-radius: 3pt;
+    margin: 4pt 0 9pt; white-space: pre; overflow: hidden; break-inside: avoid;
+  }
+  pre .c { color: #7f9c8a; }
+
+  .note {
+    border-left: 2.5pt solid #4d7c62; background: #f4f8f5;
+    padding: 5pt 9pt; margin: 5pt 0 8pt; font-size: 8.8pt; break-inside: avoid;
+  }
+  .note b { color: #24402f; }
+  .warn { border-left-color: #b4713a; background: #fbf6f1; }
+
+  /* ---------- architecture diagram ---------- */
+  .stack { margin: 5pt 0 8pt; break-inside: avoid; }
+  .layer {
+    border: 0.7pt solid #b9c9bf; background: #fbfdfb; border-radius: 2.5pt;
+    padding: 3.5pt 9pt; margin-bottom: 4pt;
+  }
+  .layer .t { font-weight: 700; font-size: 9pt; color: #1b3226; }
+  .layer .d { font-size: 8.4pt; color: #5b6d63; }
+  .tag {
+    float: right; font-size: 7.2pt; font-weight: 700; letter-spacing: 0.5pt;
+    text-transform: uppercase; padding: 1pt 5pt; border-radius: 8pt;
+  }
+  .done { background: #dcefe2; color: #1f5c3b; }
+  .partial { background: #fbeedb; color: #8a5a1d; }
+  .absent { background: #f2e2e4; color: #8d3644; }
+  .arrow { text-align: center; color: #93a89b; font-size: 8pt; line-height: 1; margin: 0 0 3pt; }
+
+  .cols { display: flex; gap: 12pt; break-inside: avoid; }
+  .cols > div { flex: 1; }
+
+  .kv { font-size: 8.6pt; }
+  .foot { margin-top: 14pt; border-top: 0.8pt solid #cfd9d2; padding-top: 6pt; font-size: 7.8pt; color: #7a8880; }
+  .nobreak { break-inside: avoid; }
+
+  /* Section 2 opens the second page deliberately: the architecture diagram cannot be
+     split, so leaving the heading at the foot of page 1 would strand it. */
+  .newpage { break-before: page; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Project documentation &middot; Days 1&ndash;3</div>
+  <h1>Game Boy DMG Emulator</h1>
+  <p class="subtitle">How the system works today: cartridge loading, memory bus, and the SM83 register file</p>
+  <div class="meta">
+    C++17 &middot; CMake + Ninja &middot; MinGW-w64 g++ on Windows &middot; SDL2 linked, not yet used
+    &nbsp;|&nbsp; Source: <span class="mono">src/bus.hpp</span>, <span class="mono">src/cpu.hpp</span>, <span class="mono">src/main.cpp</span>, <span class="mono">tests/cpu_tests.cpp</span>
+  </div>
+</div>
+
+<h2><span class="num">1.</span>Where the project stands</h2>
+
+<p>The emulator is built bottom-up. Three layers exist: a cartridge image in memory, a bus that
+addresses it, and a CPU register file that knows its own post-boot state. Nothing executes
+instructions yet &mdash; there is no fetch, no decode, no cycle counter. What runs today is a
+host-side program that proves the lower layers are correct:</p>
+
+<ol>
+  <li>Read a real ROM file from disk into memory (no fake placeholder buffer).</li>
+  <li>Parse and validate the cartridge header from that memory.</li>
+  <li>Address the ROM through the bus, exactly as the CPU eventually will.</li>
+  <li>Initialise a register file to the exact state the DMG boot ROM leaves behind.</li>
+  <li>Verify all of the above with an independent test executable.</li>
+</ol>
+
+<table>
+  <tr><th style="width:31%">Component</th><th style="width:12%">File</th><th>State</th></tr>
+  <tr><td>Cartridge loader &amp; header parser</td><td class="mono">src/bus.hpp</td><td>Complete: title, entry bytes, ROM/RAM size codes, cart type, header checksum</td></tr>
+  <tr><td>Memory bus</td><td class="mono">src/bus.hpp</td><td>Partial: ROM + 8 KiB WRAM mapped; VRAM, OAM, I/O, HRAM, IE unmapped</td></tr>
+  <tr><td>CPU register file</td><td class="mono">src/cpu.hpp</td><td>Complete: 8-bit regs, 16-bit pairs, flags, post-boot <code>reset()</code></td></tr>
+  <tr><td>CPU execution</td><td class="mono">&mdash;</td><td>Not started: no fetch/decode/execute, no cycles, no interrupts</td></tr>
+  <tr><td>Host frontend</td><td class="mono">src/main.cpp</td><td>Loads ROM, prints header, reads one byte through the bus</td></tr>
+  <tr><td>Tests</td><td class="mono">tests/cpu_tests.cpp</td><td>24 assertions over 4 test functions, run via CTest</td></tr>
+</table>
+
+<div class="nobreak">
+<h2><span class="num">2.</span>Architecture</h2>
+
+<p>The dependency direction is strictly downward: the CPU will never know that a file on a
+Windows disk exists, and the bus never knows who is reading from it.</p>
+
+<div class="stack">
+  <div class="layer"><span class="tag absent">Not built</span>
+    <div class="t">PPU &middot; APU &middot; Joypad &middot; Timers &middot; Interrupts</div>
+    <div class="d">The hardware the CPU talks to through memory-mapped I/O at 0xFF00&ndash;0xFFFF.</div>
+  </div>
+  <div class="arrow">&#9660;</div>
+
+  <div class="layer"><span class="tag partial">Partial</span>
+    <div class="t">Cpu &mdash; the SM83 register file</div>
+    <div class="d">A, F, B, C, D, E, H, L, SP, PC. Pairs derived on demand. Flags in the high nibble of F.</div>
+  </div>
+  <div class="arrow">&#9660;&nbsp;&nbsp;&nbsp;&nbsp;(the link that does not exist yet)</div>
+
+  <div class="layer"><span class="tag partial">Partial</span>
+    <div class="t">Bus &mdash; the 16-bit address space</div>
+    <div class="d">Routes a 16-bit address to the ROM or to work RAM. Unmapped addresses read as 0xFF.</div>
+  </div>
+  <div class="arrow">&#9660;</div>
+
+  <div class="layer"><span class="tag done">Complete</span>
+    <div class="t">Rom &mdash; the cartridge image</div>
+    <div class="d">Owns the raw bytes, parses the header once at load, answers offset reads.</div>
+  </div>
+  <div class="arrow">&#9660;</div>
+
+  <div class="layer"><span class="tag done">Complete</span>
+    <div class="t">Host filesystem</div>
+    <div class="d">The only layer that touches Windows. Everything above it is standard C++.</div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Why the split matters.</b> Nintendo's hardware has one shared 16-bit address bus; ROM, RAM and
+  I/O all live in the same 64 KiB window. Modelling the bus as a separate object (rather than letting
+  the CPU index an array) is what makes cartridge mappers, VRAM and the PPU addable later without
+  rewriting the CPU.
+</div>
+</div>
+
+<h2><span class="num">3.</span>What happens when you run it</h2>
+
+<p><code>gbemu.exe [rom-path]</code> &mdash; with no argument it defaults to <code>roms/cpu_instrs.gb</code>.
+The whole run is eight steps:</p>
+
+<table>
+  <tr><th style="width:6%">#</th><th style="width:34%">Step</th><th>What actually happens</th></tr>
+  <tr><td>1</td><td>Parse the command line</td><td><code>argv[1]</code> if present, otherwise the default ROM path.</td></tr>
+  <tr><td>2</td><td>Open and size the file</td><td><code>std::ifstream</code> in binary mode with <code>std::ios::ate</code>, so the length comes from <code>tellg()</code> without a seek-guess.</td></tr>
+  <tr><td>3</td><td>Read into a buffer</td><td>A <code>std::vector&lt;uint8_t&gt;</code> of exactly the file's length; the whole image is read in one call.</td></tr>
+  <tr><td>4</td><td>Build a <code>Rom</code></td><td>The vector is moved in (no copy), then the header is parsed <em>once</em> &mdash; not on every read.</td></tr>
+  <tr><td>5</td><td>Attach to the bus</td><td><code>bus.attach_rom(&amp;*rom)</code> stores a non-owning pointer; the <code>Rom</code> stays owned by <code>main</code>.</td></tr>
+  <tr><td>6</td><td>Print the header block</td><td>Title, entry bytes, size check, cart type, RAM size, checksum verdict.</td></tr>
+  <tr><td>7</td><td>Prove the bus works</td><td>Print the byte at <code>0x0000</code> &mdash; read through the bus, not from the vector.</td></tr>
+  <tr><td>8</td><td>Return</td><td><code>0</code> on success, <code>1</code> with a message on <code>stderr</code> if the ROM could not be loaded.</td></tr>
+</table>
+
+<h3>Actual output on the test ROM</h3>
+<pre><span class="c">$ ./build/gbemu.exe</span>
+=== ROM Header ===
+Title       : CPU_INSTRS
+Entry bytes : 00 C3 37 06  (0x0100-0x0103)
+File size   : 65536 bytes (0x10000)
+Size code   : 0x01  -&gt; 65536 bytes [matches file]
+Cart type   : 0x01  MBC1
+RAM size    : 0x00  -&gt; none (or unrecognised code)
+Checksum    : stored 0x3B, computed 0x3B  -&gt; PASS
+First byte at 0x0000: 0x3C</pre>
+
+<h2><span class="num">4.</span>Cartridge header decoding</h2>
+
+<p>Everything below comes from bytes already in memory, addressed by constants in
+<code>RomHeader</code> rather than magic numbers scattered through the code.</p>
+
+<table>
+  <tr><th style="width:17%">Address</th><th style="width:23%">Field</th><th>Decoding</th></tr>
+  <tr><td class="mono">0x0100&ndash;0x0103</td><td>Entry point</td><td>Four <em>raw bytes</em> built into a <code>uint32_t</code> and printed as bytes. On this ROM <code>00 C3 37 06</code> is <code>NOP</code> then <code>JP 0x0637</code>, which is exactly why they are not printed as one number.</td></tr>
+  <tr><td class="mono">0x0134&ndash;0x0143</td><td>Title</td><td>Up to 16 ASCII bytes; stops at the first <code>0x00</code>, trailing spaces trimmed, empty title becomes <code>UNTITLED</code>. A truncated file stops at its real end instead of reading past it.</td></tr>
+  <tr><td class="mono">0x0147</td><td>Cartridge type</td><td>Byte mapped to a mnemonic table: <code>0x01</code> &rarr; MBC1, <code>0x13</code> &rarr; MBC3+RAM+BATTERY, <code>0xFF</code> &rarr; HuC1+RAM+BATTERY, unknown codes &rarr; <code>UNKNOWN</code>.</td></tr>
+  <tr><td class="mono">0x0148</td><td>ROM size code</td><td><code>0x00&ndash;0x08</code> &rarr; <code>32 KiB &lt;&lt; code</code>; <code>0x52/0x53/0x54</code> &rarr; the odd 1.1/1.2/1.5 MiB carts. Compared against the real file length, so a truncated or padded dump is reported as <code>MISMATCH</code>.</td></tr>
+  <tr><td class="mono">0x0149</td><td>RAM size code</td><td><code>0x00</code> none, <code>0x01</code> 2 KiB, <code>0x02</code> 8 KiB, <code>0x03</code> 32 KiB, <code>0x04</code> 128 KiB, <code>0x05</code> 64 KiB (note the last two are out of order in the spec).</td></tr>
+  <tr><td class="mono">0x014D</td><td>Header checksum</td><td>Stored byte, compared with one recomputed at load.</td></tr>
+</table>
+
+<h3>The checksum algorithm</h3>
+<p>Over <code>0x0134</code> to <code>0x014C</code> inclusive, the running value starts at zero and
+for each byte does <code>x = x - byte - 1</code>, in the arithmetic of an 8-bit register. The
+subtract-and-decrement form is what the boot ROM itself does; the <code>-1</code> is not a typo for
+<code>x - byte</code>. In C++ that is one line per byte with a cast back to <code>uint8_t</code>, so
+the wrap-around is the hardware's wrap-around:</p>
+<pre>uint8_t x = 0;
+for (size_t addr = 0x0134; addr &lt;= 0x014C; ++addr) {
+    x = static_cast&lt;uint8_t&gt;(x - read(addr) - 1);
+}
+hdr.computed_checksum = x;
+hdr.checksum_ok = (x == hdr.checksum);</pre>
+
+<div class="note">
+  <b>This is a real check, not a formality.</b> On <code>cpu_instrs.gb</code> the recomputation
+  produces <code>0x3B</code> and the stored byte is <code>0x3B</code>, so the run prints
+  <code>PASS</code>. If a dump were corrupt, the same line prints <code>0x3B</code> next to a
+  different stored value and says <code>FAIL</code> &mdash; the emulator would not be blamed for
+  bad input.
+</div>
+
+<h2><span class="num">5.</span>The memory bus</h2>
+
+<p><code>Bus</code> owns a 16-bit-addressable view of the machine. A byte read asks "which device
+lives at this address?" and forwards the request; a write is ignored unless something writable is
+there. Unmapped space reads <code>0xFF</code>, which is what an unconnected data bus floats to.</p>
+
+<table>
+  <tr><th style="width:22%">Address range</th><th style="width:20%">Device</th><th>Behaviour today</th></tr>
+  <tr><td class="mono">0x0000&ndash;0x7FFF</td><td>Cartridge ROM</td><td>Read: forwarded to the <code>Rom</code> at the same offset. Write: ignored (ROM is read-only).</td></tr>
+  <tr><td class="mono">0x8000&ndash;0x9FFF</td><td>VRAM</td><td>Unmapped &rarr; reads <code>0xFF</code>.</td></tr>
+  <tr><td class="mono">0xA000&ndash;0xBFFF</td><td>Cartridge RAM</td><td>Unmapped &rarr; reads <code>0xFF</code>.</td></tr>
+  <tr><td class="mono">0xC000&ndash;0xDFFF</td><td>WRAM, 8 KiB</td><td>Read and write, zero-filled at construction. Offsets are <code>addr - 0xC000</code>.</td></tr>
+  <tr><td class="mono">0xE000&ndash;0xFDFF</td><td>Echo of WRAM</td><td>Unmapped &rarr; reads <code>0xFF</code>.</td></tr>
+  <tr><td class="mono">0xFE00&ndash;0xFEFF</td><td>OAM (sprites)</td><td>Unmapped &rarr; reads <code>0xFF</code>.</td></tr>
+  <tr><td class="mono">0xFF00&ndash;0xFFFF</td><td>I/O, HRAM, IE</td><td>Unmapped &rarr; reads <code>0xFF</code>.</td></tr>
+</table>
+
+<p>Two deliberate simplifications, both safe while nothing executes instructions:</p>
+<ul>
+  <li><b>No MBC banking.</b> <code>0x4000&ndash;0x7FFF</code> reads the same linear file offset instead
+  of switching to a cartridge bank. On a 32 KiB ROM that is correct by accident (there is only one
+  bank); on an MBC1 cart it is the wrong bank past <code>0x3FFF</code>. This is the first thing the
+  mapper work has to fix.</li>
+  <li><b>Unmapped reads return <code>0xFF</code></b> rather than trapping. That keeps the bus total:
+  every address answers, so the CPU can be dropped on top without null checks.</li>
+</ul>
+
+<h2><span class="num">6.</span>The CPU register file</h2>
+
+<p>The SM83 is an 8-bit CPU with an address space of 16 bits, so it has eight 8-bit registers that
+can be paired into four 16-bit ones. <code>Cpu</code> today is that state and the rules for reading
+and writing it &mdash; nothing more.</p>
+
+<div class="cols">
+  <div>
+    <table>
+      <tr><th>Pair</th><th>High</th><th>Low</th></tr>
+      <tr><td class="mono">AF</td><td class="mono">A</td><td class="mono">F (flags)</td></tr>
+      <tr><td class="mono">BC</td><td class="mono">B</td><td class="mono">C</td></tr>
+      <tr><td class="mono">DE</td><td class="mono">D</td><td class="mono">E</td></tr>
+      <tr><td class="mono">HL</td><td class="mono">H</td><td class="mono">L</td></tr>
+    </table>
+  </div>
+  <div>
+    <table>
+      <tr><th>Flag</th><th>Bit</th><th>Meaning</th></tr>
+      <tr><td class="mono">Z</td><td class="mono">0x80</td><td>zero result</td></tr>
+      <tr><td class="mono">N</td><td class="mono">0x40</td><td>subtract (for BCD)</td></tr>
+      <tr><td class="mono">H</td><td class="mono">0x20</td><td>half carry (bit 3)</td></tr>
+      <tr><td class="mono">C</td><td class="mono">0x10</td><td>carry / borrow</td></tr>
+    </table>
+  </div>
+</div>
+
+<h3>Design decisions worth knowing</h3>
+<ul>
+  <li><b>Pairs are computed, never stored.</b> <code>af()</code> recombines <code>a_</code> and
+  <code>f_</code> each time. Storing both views would allow the 16-bit and 8-bit versions of the same
+  register to drift apart &mdash; a bug class that would be very hard to see.</li>
+  <li><b>Only the high nibble of F exists.</b> On real hardware bits 0&ndash;3 of F are not connected.
+  <code>FLAG_MASK = 0xF0</code> is applied inside <code>set_f()</code> and nowhere else, so every
+  path that writes flags &mdash; including <code>set_af()</code> and <code>set_flag()</code> &mdash;
+  funnels through one choke point and cannot leak junk bits.</li>
+  <li><b>AF is masked, HL is not.</b> AF carries the flag nibble; HL is a plain 16-bit register, so
+  masking it would be wrong.</li>
+  <li><b>Flag readers are <code>z_flag()</code>, <code>n_flag()</code>, <code>h_flag()</code>,
+  <code>c_flag()</code>.</b> <code>h()</code> and <code>c()</code> are already the H and C registers,
+  so one name could not mean two things.</li>
+</ul>
+
+<h3>Post-boot state, and why those numbers</h3>
+<p>The plan skips the boot ROM, so the CPU must <em>start</em> where the boot ROM would have left it.
+These are the DMG values from Pan Docs, verified against the power-up table rather than recalled:</p>
+
+<table>
+  <tr><th style="width:20%">Register</th><th style="width:22%">Value</th><th>Origin</th></tr>
+  <tr><td class="mono">AF</td><td class="mono">0x01B0</td><td>A = <code>0x01</code> (the value written to <code>0xFF50</code> to unmap the boot ROM); F = <code>0xB0</code> = Z=1, N=0, H=1, C=1</td></tr>
+  <tr><td class="mono">BC</td><td class="mono">0x0013</td><td>B = <code>0x00</code>, C = <code>0x13</code></td></tr>
+  <tr><td class="mono">DE</td><td class="mono">0x00D8</td><td>D = <code>0x00</code>, E = <code>0xD8</code></td></tr>
+  <tr><td class="mono">HL</td><td class="mono">0x014D</td><td>H = <code>0x01</code>, L = <code>0x4D</code></td></tr>
+  <tr><td class="mono">SP</td><td class="mono">0xFFFE</td><td>top of HRAM</td></tr>
+  <tr><td class="mono">PC</td><td class="mono">0x0100</td><td>first byte of the cartridge entry point</td></tr>
+</table>
+
+<div class="note warn">
+  <b>The one conditional value.</b> Pan Docs lists H and C as "?" with a footnote: both are set
+  unless the cartridge header checksum byte is <code>0x00</code>, in which case both are clear.
+  <code>cpu_instrs.gb</code> has <code>0x3B</code>, so F = <code>0xB0</code>. A dump with a zero
+  checksum would boot with F = <code>0x80</code>. <code>POST_BOOT_AF</code> is hardcoded to the normal
+  case, which is correct for every ordinary dump &mdash; and these are <em>DMG</em> numbers: the MGB
+  boots with A = <code>0xFF</code>, the SGB with C = <code>0x14</code> and HL = <code>0xC060</code>,
+  the CGB with A = <code>0x11</code>, BC = <code>0x0000</code>, DE = <code>0x0008</code>,
+  HL = <code>0x007C</code>.
+</div>
+
+<h2><span class="num">7.</span>How correctness is checked</h2>
+
+<p><code>tests/cpu_tests.cpp</code> is a second, standalone executable &mdash; it does not link against
+<code>gbemu</code>, so a broken test cannot break the emulator build and vice versa. It uses plain
+<code>&lt;cassert&gt;</code>: a failed assertion aborts the process with a non-zero exit code, which is
+all CTest needs. <code>#undef NDEBUG</code> appears <em>before</em> the include so the checks survive
+even in an optimised build, where <code>assert</code> would otherwise expand to nothing.</p>
+
+<table>
+  <tr><th style="width:26%">Test</th><th>What it pins down</th></tr>
+  <tr><td class="mono">pair_accessors_test</td><td>Writing <code>0x1234</code> to BC puts <code>0x12</code> in B and <code>0x34</code> in C; writing C afterwards makes <code>bc()</code> return the new pair. Proves the pair is recombined from the bytes, not cached.</td></tr>
+  <tr><td class="mono">af_masking_test</td><td><code>set_af(0xFFFF)</code> yields <code>0xFFF0</code>; <code>set_f(0x0F)</code> yields <code>0x00</code>. Writing F directly is not a back door into the low nibble.</td></tr>
+  <tr><td class="mono">flags_test</td><td>Each flag toggles independently, clearing one leaves the other three intact, re-setting a set flag is a no-op, and the four mask constants equal their documented bit values.</td></tr>
+  <tr><td class="mono">reset_test</td><td>Scrambles all registers, calls <code>reset()</code>, and asserts the full DMG post-boot table. Also asserts that a freshly constructed <code>Cpu</code> is already reset, so the constructor cannot silently regress.</td></tr>
+</table>
+
+<pre><span class="c">$ cmake --preset default &amp;&amp; cmake --build --preset default</span>
+<span class="c">$ ./build/cpu_tests.exe</span>
+cpu_tests: all asserts passed
+
+<span class="c">$ ctest --test-dir build --output-on-failure</span>
+1/1 Test #1: cpu_tests ........................   Passed    0.02 sec
+100% tests passed out of 1</pre>
+
+<h2><span class="num">8.</span>Verified versus not yet true</h2>
+
+<div class="cols">
+  <div>
+    <h3 style="margin-top:4pt">Verified working</h3>
+    <ul>
+      <li>Real 64 KiB ROM loads from disk; missing file exits 1 with a message.</li>
+      <li>Header fields match the file: title <code>CPU_INSTRS</code>, size code <code>0x01</code> matching 65,536 bytes, MBC1.</li>
+      <li>Header checksum recomputes to the stored <code>0x3B</code> and reports PASS.</li>
+      <li>Bus reads a byte from ROM at <code>0x0000</code> (<code>0x3C</code>) and round-trips WRAM.</li>
+      <li>Register file: pairs, flags, masking and post-boot <code>reset()</code> all asserted.</li>
+    </ul>
+  </div>
+  <div>
+    <h3 style="margin-top:4pt">Not true yet</h3>
+    <ul>
+      <li>No instruction fetch, decode or execute &mdash; <code>PC</code> never advances.</li>
+      <li><code>Cpu</code> is not connected to <code>Bus</code>; <code>main</code> uses each separately.</li>
+      <li>No cycle counting, no interrupts (IME/IF/IE), no HALT/STOP.</li>
+      <li>No cartridge banking; VRAM, OAM, I/O and HRAM are unmapped.</li>
+      <li>SDL2 is linked but no window or framebuffer exists.</li>
+      <li>Tests run on demand, not automatically as part of the build.</li>
+    </ul>
+  </div>
+</div>
+
+<h2><span class="num">9.</span>What comes next</h2>
+<p>The next step is the first instruction loop: give <code>Cpu</code> a reference to <code>Bus</code>,
+read the opcode at <code>PC</code>, advance <code>PC</code>, and dispatch through a 256-entry table to
+implementations that set flags exactly as the SM83 does. The register file is already the right shape
+for that &mdash; it exposes byte and pair accessors and a single flag choke point &mdash; so the
+instruction layer adds behaviour without changing the state model.</p>
+
+<div class="foot">
+  Sources: Pan Docs &mdash; Power-Up Sequence, CPU Registers and Flags, The Cartridge Header.
+  This document describes commit <span class="mono">91a062d</span> ("Add the SM83 register file,
+  post-boot reset, and the first test program"). Companion reading: <span class="mono">docs/devlog2.md</span>
+  (cartridge and bus), <span class="mono">docs/devlog3.md</span> (register file).
+</div>
+
+</body>
+</html>
